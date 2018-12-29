@@ -1,5 +1,11 @@
 #include <opencv2/opencv.hpp>
 #define KAGUYA_DYNAMIC_LIB
+extern "C" {
+#include "lua.h"
+#include "lualib.h"
+#include "lauxlib.h"
+}
+#include <string>
 #include <kaguya/another_binding_api.hpp>
 
 #include "bind_helper.hpp"
@@ -91,16 +97,16 @@ cv::Mat ones2(std::vector<int> size, int type) {
   return cv::Mat::ones(size.size(), size.data(), type);
 }
 auto ones = kaguya::overload(ones0, ones1, ones2);
-KAGUYA_MEMBER_FUNCTION_OVERLOADS_WITH_SIGNATURE(
-    getUMat_wrap_obj, cv::Mat, getUMat, 1, 2,
-    cv::UMat (cv::Mat::*)(int, cv::UMatUsageFlags) const);
-auto getUMat = getUMat_wrap_obj();
+//KAGUYA_MEMBER_FUNCTION_OVERLOADS_WITH_SIGNATURE(
+//    getUMat_wrap_obj, cv::Mat, getUMat, 1, 2,
+//    cv::UMat (cv::Mat::*)(int, cv::UMatUsageFlags) const);
+//auto getUMat = getUMat_wrap_obj();
 KAGUYA_MEMBER_FUNCTION_OVERLOADS_WITH_SIGNATURE(reshape_wrap_obj0, cv::Mat,
                                                 reshape, 1, 2,
                                                 cv::Mat (cv::Mat::*)(int, int)
                                                     const);
 auto reshape0 = reshape_wrap_obj0();
-identity<cv::Mat (cv::Mat::*)(int, int, const int *) const>::type reshape1 =
+identity<cv::Mat (cv::Mat::*)(int, const std::vector<int> & newshape) const>::type reshape1 =
     &cv::Mat::reshape;
 auto reshape = kaguya::overload(reshape0, reshape1);
 KAGUYA_MEMBER_FUNCTION_OVERLOADS_WITH_SIGNATURE(
@@ -177,6 +183,22 @@ identity<void (cv::Mat::*)(const cv::Mat &)>::type push_back =
 
 std::vector<int> size_getter(const cv::Mat *m) {
   return std::vector<int>(m->size.p, m->size.p + m->dims);
+}
+
+int type_getter(const cv::Mat *m) {
+  return m->type();
+}
+
+std::string continuous_data(const cv::Mat *m) {
+    if (!m->isContinuous()) {
+        cv::Mat dst = m->clone();
+        if (!dst.isContinuous()) {
+            throw kaguya::LuaTypeMismatch("fuck, Mat::continuous_data intput clone is not continuous");
+        }
+        return std::string((const char *)dst.data, dst.total() * dst.elemSize());
+    } else {
+        return std::string((const char *)m->data, m->total() * m->elemSize());
+    }
 }
 
 template <typename T, typename... index>
@@ -485,24 +507,18 @@ void kaguya_manual_bind() {
   auto mat_constructor = overload(
       []() { return cv::Mat(); },
       [](int rows, int cols, int type) { return cv::Mat(rows, cols, type); },
-      [](Size size, int type) { return cv::Mat(size, type); },
+      [](int rows, int cols, int type, const std::string & data) { 
+        cv::Mat mat = cv::Mat(rows, cols, type, (void*)data.c_str()); 
+        return mat.clone();
+            },
       [](int rows, int cols, int type, const Scalar &s) {
         return cv::Mat(rows, cols, type, s);
       },
-      [](cv::Size size, int type, const Scalar &s) {
-        return cv::Mat(size, type, s);
+      [](const std::vector<int> &sizes, int type) {
+        return cv::Mat(sizes, type);
       },
-      [](int ndims, const std::vector<int> &sizes, int type) {
-        if (sizes.size() < size_t(ndims)) {
-          throw LuaTypeMismatch("sizes  < ndims");
-        }
-        return cv::Mat(ndims, sizes.data(), type);
-      },
-      [](int ndims, const std::vector<int> &sizes, int type, const Scalar &s) {
-        if (sizes.size() < size_t(ndims)) {
-          throw LuaTypeMismatch("sizes  < ndims");
-        }
-        return cv::Mat(ndims, sizes.data(), type, s);
+      [](const std::vector<int> &sizes, int type, const Scalar &s) {
+        return cv::Mat(sizes, type, s);
       },
       [](const cv::Mat &m) { return cv::Mat(m); },
       [](const cv::Mat &m, const Range &rowRange) {
@@ -537,9 +553,9 @@ void kaguya_manual_bind() {
       .function("clone", wrap::Mat::clone)
       .function("reserve", wrap::Mat::reserve)
       .function("dot", wrap::Mat::dot)
-      .function("type", wrap::Mat::type)
+//     .function("type", wrap::Mat::type)
       .class_function("ones", wrap::Mat::ones)
-      .function("getUMat", wrap::Mat::getUMat)
+//     .function("getUMat", wrap::Mat::getUMat)
       .function("reshape", wrap::Mat::reshape)
       .function("convertTo", wrap::Mat::convertTo)
       .function("total", wrap::Mat::total)
@@ -578,6 +594,8 @@ void kaguya_manual_bind() {
       .property("rows", &cv::Mat::rows)
       .property("cols", &cv::Mat::cols)
       .property("size", &wrap::Mat::size_getter)
+      .property("type", &wrap::Mat::type_getter)
+      .property("continuous_data", &wrap::Mat::continuous_data)
       .class_function("__tostring", &kaguya_stringifier<cv::Mat>)
       .add_static_property("__index",
                            luacfunction(wrap::Mat::Mat_index_function))
@@ -591,11 +609,18 @@ void kaguya_manual_bind() {
       .class_function("__tostring", &kaguya_stringifier<cv::Scalar>);
 
   function("Point", [](int x, int y) { return cv::Point(x, y); });
+  function("Point2f", [](float x, float y) { return cv::Point2f(x, y); });
+  function("Point3f", [](float x, float y, float z) { return cv::Point3f(x, y, z); });
   function("Size",
            [](int width, int height) { return cv::Size(width, height); });
+  function("Size2f",
+           [](float width, float height) { return cv::Size2f(width, height); });
   function("Range", [](int start, int end) { return cv::Range(start, end); });
-  function("Rect", [](int x, int y, int height, int width) {
-    return cv::Rect(x, y, height, width);
+  function("Rect", [](int x, int y, int width, int height) {
+    return cv::Rect(x, y, width, height);
   });
+
+  function("RotatedRect", [](const Point2f& center, const Size2f& size, float angle) { return cv::RotatedRect(center, size, angle); });
+
 }
 

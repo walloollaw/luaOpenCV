@@ -1,5 +1,11 @@
 #include <opencv2/opencv.hpp>
 #define KAGUYA_DYNAMIC_LIB
+extern "C" {
+#include "lua.h"
+#include "lualib.h"
+#include "lauxlib.h"
+}
+
 #include <kaguya/another_binding_api.hpp>
 
 #include "bind_helper.hpp"

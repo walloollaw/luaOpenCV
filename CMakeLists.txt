@@ -1,52 +1,67 @@
-cmake_minimum_required(VERSION 2.8)
-project(luaOpenCV)
+cmake_minimum_required(VERSION 3.0)
 
+project(luacv)
 
+set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
-option(BUILD_TESTS "Builds the unit test" TRUE)
-option(LOCAL_LUA_DIRECTORY "local lua library directory" "third_party/lua-5.3.3")
-set(LOCAL_LUA_DIRECTORY "third_party/lua-5.3.3")
+set(THIRD_PARTY_PATH "${CMAKE_CURRENT_BINARY_DIR}/third_party" CACHE STRING
+  "A path setting third party libraries download & build directories.")
 
-include(cmake/FindLua.cmake)
+set(CMAKE_INSTALL_PREFIX ${THIRD_PARTY_PATH}/luacv)
+set(DCMAKE_INSTALL_LIBDIR ${THIRD_PARTY_PATH}/luacv/lib)
 
-set(CMAKE_PREFIX_PATH third_party/opencvlib)
-FIND_PACKAGE(OpenCV 3.1.0 REQUIRED)
+#for testing
+#set(DEP_LIB_PATH "${CMAKE_CURRENT_SOURCE_DIR}/deps")
+#set(OPENCV_INSTALL_DIR "${DEP_LIB_PATH}/opencv")
+#set(LUA_INSTALL_DIR "${DEP_LIB_PATH}/lua")
+#set(KAGUYA_INSTALL_DIR "${DEP_LIB_PATH}/kaguya/include")
 
-include_directories(BEFORE ${LUA_INCLUDE_DIRS})
-link_directories(${LUA_LIBRARY_DIRS})
+#include kaguya headers
+set(KAGUYA_BINDING_SRC_PATH "${CMAKE_CURRENT_SOURCE_DIR}/src")
 
-include_directories(third_party/kaguya/include)
-include_directories(BEFORE ${OpenCV_INCLUDE_DIRS})
+#include opencv
+if(NOT EXISTS ${OPENCV_INSTALL_DIR})
+    message(SEND_ERROR "not found installed opencv in ${OPENCV_INSTALL_DIR}")
+endif()
+include_directories(${OPENCV_INSTALL_DIR}/include)
+link_directories(${OPENCV_INSTALL_DIR}/lib)
 
+#include lua libs
+if(NOT EXISTS ${LUA_INSTALL_DIR})
+    include(external/lua)
+else()
+    add_library(lua STATIC IMPORTED GLOBAL)
+    set_property(TARGET lua 
+                PROPERTY IMPORTED_LOCATION 
+                ${LUA_INSTALL_DIR}/lib/liblua.a)
+endif()
+set(LUA_INCLUDE_PATH "${LUA_INSTALL_DIR}/include")
+set(LUA_LIBRARY_PATH "${LUA_INSTALL_DIR}/lib")
+message("lua path ${LUA_INSTALL_DIR}")
 
-if(MSVC)
- set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /bigobj")
-else(MSVC)
- set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
-endif(MSVC)
+include_directories(${LUA_INCLUDE_PATH})
+link_directories(${LUA_LIBRARY_PATH})
 
+#include kaguya
+if(NOT EXISTS ${KAGUYA_INSTALL_DIR})
+    include(external/kaguya)
+endif()
+message("use kaguya in: ${KAGUYA_INSTALL_DIR}")
+include_directories("${KAGUYA_INSTALL_DIR}")
 
-set(LUA_OPENCV_SRCS src/raw_bind.cc src/manual_bind.cc)
-add_library(cv SHARED ${LUA_OPENCV_SRCS})
-target_link_libraries(cv ${OpenCV_LIBS} ${LUA_LIBRARIES})
+include_directories("${KAGUYA_BINDING_SRC_PATH}")
+add_definitions("-Wall -std=c++11 -fPIC")
 
+file(GLOB SRC_FILES
+        "${KAGUYA_BINDING_SRC_PATH}/*.cc")
+add_library(luacv ${SRC_FILES})
 
+INSTALL(
+    DIRECTORY "${KAGUYA_INSTALL_DIR}/kaguya"
+    DESTINATION include
+    FILES_MATCHING PATTERN "*.h*")
 
-if(BUILD_TESTS)
-  enable_testing()
-
-  include_directories(third_party/googletest/googletest/include)
-  include_directories(third_party/googletest/googletest/)
-  set(GTEST_SRCS third_party/googletest/googletest/src/gtest-all.cc)
-  
-set(LUA_OPENCV_TEST_SRCS 
-    test/test_main.cc
-    test/test_mat.cc
-    test/test_draw.cc
-    test/test_type.cc
-    test/test_image.cc)
-  add_executable(test_runner ${GTEST_SRCS} ${LUA_OPENCV_SRCS} ${LUA_OPENCV_TEST_SRCS})
-  target_link_libraries(test_runner ${OpenCV_LIBS} ${LUA_LIBRARIES})
-  add_test(NAME cvbind_test COMMAND test_runner WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/test)
-
-endif(BUILD_TESTS)
+INSTALL(
+    TARGETS luacv
+    ARCHIVE DESTINATION lib
+    LIBRARY DESTINATION lib)
