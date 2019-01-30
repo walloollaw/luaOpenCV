@@ -55,6 +55,7 @@ add_definitions("-Wall -std=c++11 -fPIC")
 file(GLOB SRC_FILES
         "${KAGUYA_BINDING_SRC_PATH}/*.cc")
 add_library(luacv ${SRC_FILES})
+add_dependencies(luacv kaguya)
 
 INSTALL(
     DIRECTORY "${KAGUYA_INSTALL_DIR}/kaguya"
