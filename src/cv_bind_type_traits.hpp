@@ -136,7 +136,7 @@ struct lua_type_traits<cv::String>
 KAGUYA_TABLE_MAPPING_TYPE2(cv::Size, int, width, height)
 KAGUYA_TABLE_MAPPING_TYPE2(cv::Point, int, x, y)
 KAGUYA_TABLE_MAPPING_TYPE2(cv::Range, int, start, end)
-KAGUYA_TABLE_MAPPING_TYPE4(cv::Rect, int, x, y, height, width)
+KAGUYA_TABLE_MAPPING_TYPE4(cv::Rect, int, x, y, width, height)
 
 template <typename T>
 struct lua_type_traits<cv::Ptr<T> > {
